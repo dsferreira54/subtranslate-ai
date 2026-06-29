@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+.git
+.gitignore
+*.md
+.env
+.env.*
+.cursor
+.vscode
+**/coverage
+**/__tests__
+**/*.test.ts
+terminals

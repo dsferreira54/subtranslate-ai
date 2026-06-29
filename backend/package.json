@@ -13,6 +13,7 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@fastify/cors": "^10.0.2",
     "@fastify/multipart": "^9.0.3",
+    "@fastify/static": "^9.0.0",
     "@google/generative-ai": "^0.21.0",
     "@subtranslate-ai/shared": "*",
     "fastify": "^5.2.1",
