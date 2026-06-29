@@ -986,6 +986,11 @@ textarea:focus {
   grid-column: 1 / -1;
 }
 
+.chart-card.chart-progress .recharts-wrapper,
+.chart-card.chart-progress .recharts-surface {
+  overflow: visible;
+}
+
 .chart-center-label {
   text-align: center;
   margin: -0.5rem 0 0;

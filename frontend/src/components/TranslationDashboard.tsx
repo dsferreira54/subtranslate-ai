@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { memo, useMemo, useState, useEffect } from "react";
 import {
   PieChart,
   Pie,
@@ -41,6 +41,75 @@ const CHART_TOOLTIP_STYLE = {
   borderRadius: "6px",
   color: "#e2e8f0",
 };
+
+const LEGEND_WRAPPER_STYLE = { color: "#94a3b8", fontSize: "0.8rem" };
+const PIE_LABEL_LINE_STYLE = { stroke: "#64748b" };
+
+interface PieSlice {
+  name: string;
+  value: number;
+  color: string;
+}
+
+function renderPieLabel({ name, percent }: { name?: string; percent?: number }) {
+  return `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`;
+}
+
+function buildProgressPieData(
+  counts: ReturnType<typeof countStatuses>,
+  total: number,
+): PieSlice[] {
+  if (total === 0) return [];
+  return [
+    { name: "Translated", value: counts.translated, color: STATUS_COLORS.translated },
+    { name: "Pending", value: counts.pending, color: STATUS_COLORS.pending },
+    { name: "In Progress", value: counts.inProgress, color: STATUS_COLORS.inProgress },
+    { name: "Needs Review", value: counts.needs_review, color: STATUS_COLORS.needs_review },
+    { name: "Failed", value: counts.failed, color: STATUS_COLORS.failed },
+  ].filter((d) => d.value > 0);
+}
+
+const ProgressBreakdownChart = memo(function ProgressBreakdownChart({
+  data,
+  total,
+}: {
+  data: PieSlice[];
+  total: number;
+}) {
+  return (
+    <div className="chart-card chart-progress">
+      <h3>Progress Breakdown</h3>
+      <ResponsiveContainer width="100%" height={330}>
+        <PieChart margin={{ top: 24, right: 16, bottom: 16, left: 16 }}>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="48%"
+            innerRadius={55}
+            outerRadius={88}
+            paddingAngle={2}
+            dataKey="value"
+            label={renderPieLabel}
+            labelLine={PIE_LABEL_LINE_STYLE}
+            isAnimationActive={false}
+          >
+            {data.map((entry) => (
+              <Cell key={entry.name} fill={entry.color} stroke="#1a1f2e" strokeWidth={2} />
+            ))}
+          </Pie>
+          <Tooltip
+            contentStyle={CHART_TOOLTIP_STYLE}
+            formatter={(value, name) => {
+              const n = Number(value ?? 0);
+              return [`${n} cues (${total > 0 ? Math.round((n / total) * 100) : 0}%)`, String(name ?? "")];
+            }}
+          />
+          <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
+});
 
 function countStatuses(cues: SubtitleCue[]) {
   const counts = {
@@ -106,16 +175,17 @@ export function TranslationDashboard({ cues, job, progressHistory, elapsedSecond
   const total = cues.length;
   const statusCounts = useMemo(() => countStatuses(cues), [cues]);
 
-  const progressPieData = useMemo(() => {
-    if (total === 0) return [];
-    return [
-      { name: "Translated", value: statusCounts.translated, color: STATUS_COLORS.translated },
-      { name: "Pending", value: statusCounts.pending, color: STATUS_COLORS.pending },
-      { name: "In Progress", value: statusCounts.inProgress, color: STATUS_COLORS.inProgress },
-      { name: "Needs Review", value: statusCounts.needs_review, color: STATUS_COLORS.needs_review },
-      { name: "Failed", value: statusCounts.failed, color: STATUS_COLORS.failed },
-    ].filter((d) => d.value > 0);
-  }, [statusCounts, total]);
+  const progressPieData = useMemo(
+    () => buildProgressPieData(statusCounts, total),
+    [
+      statusCounts.translated,
+      statusCounts.pending,
+      statusCounts.inProgress,
+      statusCounts.needs_review,
+      statusCounts.failed,
+      total,
+    ],
+  );
 
   const translatedPercent = total > 0 ? Math.round((statusCounts.translated / total) * 100) : 0;
   const completedPercent =
@@ -234,14 +304,6 @@ export function TranslationDashboard({ cues, job, progressHistory, elapsedSecond
 
   if (total === 0) return null;
 
-  const renderPieLabel = ({
-    name,
-    percent,
-  }: {
-    name?: string;
-    percent?: number;
-  }) => `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`;
-
   const renderSummary = (showAll: boolean) => {
     if (!showAll) {
       return (
@@ -317,37 +379,7 @@ export function TranslationDashboard({ cues, job, progressHistory, elapsedSecond
   };
 
   const renderProgressChart = () => (
-    <div className="chart-card">
-      <h3>Progress Breakdown</h3>
-      <ResponsiveContainer width="100%" height={260}>
-        <PieChart>
-          <Pie
-            data={progressPieData}
-            cx="50%"
-            cy="50%"
-            innerRadius={55}
-            outerRadius={95}
-            paddingAngle={2}
-            dataKey="value"
-            label={renderPieLabel}
-            labelLine={{ stroke: "#64748b" }}
-          >
-            {progressPieData.map((entry) => (
-              <Cell key={entry.name} fill={entry.color} stroke="#1a1f2e" strokeWidth={2} />
-            ))}
-          </Pie>
-          <Tooltip
-            contentStyle={CHART_TOOLTIP_STYLE}
-            formatter={(value, name) => {
-              const n = Number(value ?? 0);
-              return [`${n} cues (${total > 0 ? Math.round((n / total) * 100) : 0}%)`, String(name ?? "")];
-            }}
-          />
-          <Legend wrapperStyle={{ color: "#94a3b8", fontSize: "0.8rem" }} />
-        </PieChart>
-      </ResponsiveContainer>
-      <p className="chart-center-label">{translatedPercent}% translated</p>
-    </div>
+    <ProgressBreakdownChart data={progressPieData} total={total} />
   );
 
   const renderStatusChart = () => (
