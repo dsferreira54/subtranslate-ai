@@ -19,6 +19,10 @@ import { TranslationDashboard, type ProgressSnapshot } from "./components/Transl
 import { getLlmConfigFromCookie, saveLlmConfigToCookie } from "./lib/llmConfigCookies";
 import { detectLanguageFromCues } from "./lib/detectLanguage";
 import { isTerminalJobStatus } from "./lib/formatDuration";
+import {
+  notifyTranslationFinished,
+  requestNotificationPermission,
+} from "./lib/jobNotifications";
 import "./App.css";
 
 export default function App() {
@@ -35,6 +39,7 @@ export default function App() {
   const [sourceDetectNotice, setSourceDetectNotice] = useState<string | null>(null);
   const jobStartRef = useRef<number | null>(null);
   const elapsedCapturedRef = useRef(false);
+  const notificationSentRef = useRef(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -82,11 +87,13 @@ export default function App() {
 
   const handleTranslate = async () => {
     setError(null);
+    void requestNotificationPermission();
     try {
       const { jobId: newJobId } = await startJob(cues, settings, apiKey, filename);
       setJobId(newJobId);
       jobStartRef.current = Date.now();
       elapsedCapturedRef.current = false;
+      notificationSentRef.current = false;
       setElapsedSeconds(null);
       setProgressHistory([{ timestamp: Date.now(), translated: 0, processed: 0, total: cues.length }]);
 
@@ -100,7 +107,12 @@ export default function App() {
             !elapsedCapturedRef.current
           ) {
             elapsedCapturedRef.current = true;
-            setElapsedSeconds(Math.round((Date.now() - jobStartRef.current) / 1000));
+            const elapsed = Math.round((Date.now() - jobStartRef.current) / 1000);
+            setElapsedSeconds(elapsed);
+            if (!notificationSentRef.current) {
+              notificationSentRef.current = true;
+              notifyTranslationFinished(updatedJob, filename, elapsed);
+            }
           }
           setProgressHistory((prev) => {
             const { translated, failed, needsReview, total } = updatedJob.progress;
