@@ -10,6 +10,7 @@ import {
   type ListModelsRequest,
   type ModelInfo,
 } from "@subtranslate-ai/shared";
+import { isTerminalJobStatus } from "../lib/formatDuration";
 
 const API_BASE = "/api";
 
@@ -104,11 +105,27 @@ export interface JobEventHandlers {
   onError?: (error: Error) => void;
 }
 
+export interface SubscribeToJobEventsOptions {
+  /** Reconnect when the SSE stream drops while the job is still active. Default: true. */
+  autoReconnect?: boolean;
+}
+
+const SSE_EVENT_TYPES = [
+  "jobStatus", "cueStart", "cueComplete", "cueRetry",
+  "cueNeedsReview", "cueFailed", "progress", "log", "complete", "error",
+] as const;
+
+const RECONNECT_DELAY_MS = 2000;
+
 export function subscribeToJobEvents(
   jobId: string,
   handlers: JobEventHandlers,
+  options: SubscribeToJobEventsOptions = {},
 ): () => void {
-  const source = new EventSource(`${API_BASE}/jobs/${jobId}/events`);
+  const autoReconnect = options.autoReconnect !== false;
+  let closed = false;
+  let source: EventSource | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   const handleMessage = (event: MessageEvent) => {
     try {
@@ -137,18 +154,43 @@ export function subscribeToJobEvents(
     }
   };
 
-  for (const eventType of [
-    "jobStatus", "cueStart", "cueComplete", "cueRetry",
-    "cueNeedsReview", "cueFailed", "progress", "log", "complete", "error",
-  ]) {
-    source.addEventListener(eventType, handleMessage);
-  }
+  const connect = () => {
+    if (closed) return;
 
-  source.onerror = () => {
-    handlers.onError?.(new Error("Lost connection to translation server."));
+    source?.close();
+    source = new EventSource(`${API_BASE}/jobs/${jobId}/events`);
+
+    for (const eventType of SSE_EVENT_TYPES) {
+      source.addEventListener(eventType, handleMessage);
+    }
+
+    source.onerror = () => {
+      source?.close();
+      source = null;
+      if (closed) return;
+
+      if (!autoReconnect) {
+        handlers.onError?.(new Error("Lost connection to translation server."));
+        return;
+      }
+
+      void getJob(jobId)
+        .then((job) => {
+          handlers.onJobUpdate?.(job);
+          if (isTerminalJobStatus(job.status)) return;
+          reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS);
+        })
+        .catch((err) => handlers.onError?.(err));
+    };
   };
 
-  return () => source.close();
+  connect();
+
+  return () => {
+    closed = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    source?.close();
+  };
 }
 
 export { DEFAULT_TRANSLATION_SETTINGS };

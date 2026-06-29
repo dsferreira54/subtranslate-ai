@@ -16,13 +16,9 @@ import {
 } from "recharts";
 import type { SubtitleCue, TranslationJobPublic } from "@subtranslate-ai/shared";
 import { formatDuration } from "../lib/formatDuration";
+import type { ProgressSnapshot } from "../lib/progressHistory";
 
-export interface ProgressSnapshot {
-  timestamp: number;
-  translated: number;
-  processed: number;
-  total: number;
-}
+export type { ProgressSnapshot };
 
 interface TranslationDashboardProps {
   cues: SubtitleCue[];

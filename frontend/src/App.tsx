@@ -6,8 +6,8 @@ import {
   cancelJob,
   pauseJob,
   resumeJob,
-  subscribeToJobEvents,
   fetchReport,
+  getJob,
 } from "./api/client";
 import { SrtUpload } from "./components/SrtUpload";
 import { LlmConfigForm } from "./components/LlmConfigForm";
@@ -15,7 +15,7 @@ import { LanguageDirectionPanel } from "./components/LanguageDirectionPanel";
 import { TranslationActionBar } from "./components/TranslationActionBar";
 import { LogPanel } from "./components/LogPanel";
 import { CuePreview } from "./components/CuePreview";
-import { TranslationDashboard, type ProgressSnapshot } from "./components/TranslationDashboard";
+import { TranslationDashboard } from "./components/TranslationDashboard";
 import { getLlmConfigFromCookie, saveLlmConfigToCookie } from "./lib/llmConfigCookies";
 import { detectLanguageFromCues } from "./lib/detectLanguage";
 import { isTerminalJobStatus } from "./lib/formatDuration";
@@ -23,6 +23,13 @@ import {
   notifyTranslationFinished,
   requestNotificationPermission,
 } from "./lib/jobNotifications";
+import {
+  clearActiveJobSession,
+  getActiveJobSession,
+  saveActiveJobSession,
+} from "./lib/activeJobStorage";
+import { attachJobSubscription } from "./lib/jobSubscription";
+import { appendProgressSnapshot, type ProgressSnapshot } from "./lib/progressHistory";
 import "./App.css";
 
 export default function App() {
@@ -34,6 +41,7 @@ export default function App() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [job, setJob] = useState<TranslationJobPublic | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [resumeNotice, setResumeNotice] = useState<string | null>(null);
   const [progressHistory, setProgressHistory] = useState<ProgressSnapshot[]>([]);
   const [elapsedSeconds, setElapsedSeconds] = useState<number | null>(null);
   const [sourceDetectNotice, setSourceDetectNotice] = useState<string | null>(null);
@@ -63,16 +71,115 @@ export default function App() {
     return () => unsubscribeRef.current?.();
   }, []);
 
+  const connectToJob = useCallback((activeJobId: string, activeFilename: string) => {
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = attachJobSubscription(activeJobId, {
+      filename: activeFilename,
+      getStartedAt: () => jobStartRef.current,
+      isElapsedCaptured: () => elapsedCapturedRef.current,
+      markElapsedCaptured: () => {
+        elapsedCapturedRef.current = true;
+      },
+      isNotificationSent: () => notificationSentRef.current,
+      markNotificationSent: () => {
+        notificationSentRef.current = true;
+      },
+      notifyFinished: notifyTranslationFinished,
+      onJobUpdate: setJob,
+      onProgressHistory: setProgressHistory,
+      onError: (message) => setError(message),
+      onTerminal: (_updatedJob, elapsed) => setElapsedSeconds(elapsed),
+    });
+  }, []);
+
+  const restoreJobSession = useCallback(
+    async (session: ReturnType<typeof getActiveJobSession>) => {
+      if (!session) return;
+
+      try {
+        const restoredJob = await getJob(session.jobId);
+        setJobId(session.jobId);
+        setFilename(session.filename || restoredJob.filename || "");
+        setCues(restoredJob.cues);
+        setSettings(restoredJob.settings);
+        setJob(restoredJob);
+        setError(null);
+
+        jobStartRef.current = session.startedAt;
+        notificationSentRef.current = session.notificationSent;
+        elapsedCapturedRef.current = session.elapsedSeconds !== null;
+
+        const history =
+          session.progressHistory.length > 0
+            ? session.progressHistory
+            : [appendProgressSnapshot([], restoredJob)[0]].filter(Boolean);
+
+        const mergedHistory = appendProgressSnapshot(history, restoredJob);
+        setProgressHistory(mergedHistory);
+
+        if (session.elapsedSeconds !== null) {
+          setElapsedSeconds(session.elapsedSeconds);
+        } else if (isTerminalJobStatus(restoredJob.status)) {
+          const elapsed = Math.round((Date.now() - session.startedAt) / 1000);
+          setElapsedSeconds(elapsed);
+          elapsedCapturedRef.current = true;
+          if (!session.notificationSent) {
+            notificationSentRef.current = true;
+            notifyTranslationFinished(restoredJob, session.filename, elapsed);
+          }
+        }
+
+        if (!isTerminalJobStatus(restoredJob.status)) {
+          setResumeNotice("Reconnected to your translation — progress continues on the server.");
+          connectToJob(session.jobId, session.filename || restoredJob.filename || "");
+        } else {
+          setResumeNotice("Restored your previous translation session.");
+        }
+      } catch {
+        clearActiveJobSession();
+      }
+    },
+    [connectToJob],
+  );
+
+  useEffect(() => {
+    if (!configLoaded) return;
+    const session = getActiveJobSession();
+    if (!session) return;
+    void restoreJobSession(session);
+  }, [configLoaded, restoreJobSession]);
+
+  useEffect(() => {
+    if (!jobId) return;
+    const timer = setTimeout(() => {
+      saveActiveJobSession({
+        jobId,
+        filename,
+        startedAt: jobStartRef.current ?? Date.now(),
+        notificationSent: notificationSentRef.current,
+        progressHistory,
+        elapsedSeconds,
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [jobId, filename, progressHistory, elapsedSeconds, job?.status]);
+
   const handleParsed = useCallback((parsed: SubtitleCue[], name: string) => {
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
+    clearActiveJobSession();
+
     setCues(parsed);
     setFilename(name);
     setJob(null);
     setJobId(null);
     setError(null);
+    setResumeNotice(null);
     setProgressHistory([]);
     setElapsedSeconds(null);
     jobStartRef.current = null;
     elapsedCapturedRef.current = false;
+    notificationSentRef.current = false;
 
     setSourceDetectNotice(null);
 
@@ -87,6 +194,7 @@ export default function App() {
 
   const handleTranslate = async () => {
     setError(null);
+    setResumeNotice(null);
     void requestNotificationPermission();
     try {
       const { jobId: newJobId } = await startJob(cues, settings, apiKey, filename);
@@ -97,40 +205,16 @@ export default function App() {
       setElapsedSeconds(null);
       setProgressHistory([{ timestamp: Date.now(), translated: 0, processed: 0, total: cues.length }]);
 
-      unsubscribeRef.current?.();
-      unsubscribeRef.current = subscribeToJobEvents(newJobId, {
-        onJobUpdate: (updatedJob) => {
-          setJob(updatedJob);
-          if (
-            jobStartRef.current &&
-            isTerminalJobStatus(updatedJob.status) &&
-            !elapsedCapturedRef.current
-          ) {
-            elapsedCapturedRef.current = true;
-            const elapsed = Math.round((Date.now() - jobStartRef.current) / 1000);
-            setElapsedSeconds(elapsed);
-            if (!notificationSentRef.current) {
-              notificationSentRef.current = true;
-              notifyTranslationFinished(updatedJob, filename, elapsed);
-            }
-          }
-          setProgressHistory((prev) => {
-            const { translated, failed, needsReview, total } = updatedJob.progress;
-            const processed = translated + failed + needsReview;
-            const last = prev[prev.length - 1];
-            if (last && last.processed === processed && last.total === total) {
-              return prev;
-            }
-            return [...prev, { timestamp: Date.now(), translated, processed, total }].slice(-120);
-          });
-        },
-        onEvent: (event) => {
-          if (event.type === "error") {
-            setError(String(event.data.message ?? "Translation error"));
-          }
-        },
-        onError: (err) => setError(err.message),
+      saveActiveJobSession({
+        jobId: newJobId,
+        filename,
+        startedAt: jobStartRef.current,
+        notificationSent: false,
+        progressHistory: [{ timestamp: Date.now(), translated: 0, processed: 0, total: cues.length }],
+        elapsedSeconds: null,
       });
+
+      connectToJob(newJobId, filename);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start translation.");
     }
@@ -166,6 +250,19 @@ export default function App() {
       </header>
 
       {error && <div className="banner error">{error}</div>}
+      {resumeNotice && (
+        <div className="banner info">
+          {resumeNotice}
+          <button
+            type="button"
+            className="banner-dismiss"
+            onClick={() => setResumeNotice(null)}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <main>
         <LlmConfigForm
