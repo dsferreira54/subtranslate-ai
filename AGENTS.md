@@ -1,32 +1,32 @@
-# SubTranslate AI — Contexto para agentes de manutenção
+# SubTranslate AI — Maintenance context for agents
 
-Este documento orienta agentes e desenvolvedores que vão dar manutenção no projeto **SubTranslate AI** (nome npm: `subtranslate-ai`). O diretório no disco pode ainda se chamar `srt-forge`; isso é legado do rename.
+This document guides agents and developers maintaining **SubTranslate AI** (npm name: `subtranslate-ai`). The on-disk folder may still be named `srt-forge` — that is legacy from the rename.
 
-## O que é o projeto
+## What this project is
 
-Aplicação web full-stack para traduzir legendas `.srt` **cue por cue** (bloco por bloco) usando LLMs. Nunca traduz o arquivo inteiro em uma única chamada.
+A full-stack web app for translating `.srt` subtitles **cue by cue** (block by block) using LLMs. It never translates the entire file in a single LLM call.
 
 **Stack:**
-- Monorepo npm workspaces: `shared`, `backend`, `frontend`
-- **Backend:** Fastify + TypeScript (porta 3001)
-- **Frontend:** React 18 + Vite + TypeScript (porta 5173, proxy `/api` → backend)
-- **Shared:** tipos TypeScript compartilhados (`@subtranslate-ai/shared`)
+- npm workspaces monorepo: `shared`, `backend`, `frontend`
+- **Backend:** Fastify + TypeScript (port 3001)
+- **Frontend:** React 18 + Vite + TypeScript (port 5173, proxies `/api` → backend)
+- **Shared:** shared TypeScript types (`@subtranslate-ai/shared`)
 
-**Comandos:**
+**Commands:**
 ```bash
 npm install
-npm run dev      # mata processo na 3001 e sobe backend + frontend
+npm run dev      # kills process on 3001, starts backend + frontend
 npm run build
-npm test         # testes do backend (vitest)
+npm test         # backend tests (vitest)
 ```
 
-## Arquitetura em alto nível
+## High-level architecture
 
 ```
-Upload .srt → parse (backend) → config LLM + idiomas (frontend)
+Upload .srt → parse (backend) → LLM config + languages (frontend)
      → POST /api/jobs → translateSrtDocument (async)
-     → SSE /api/jobs/:id/events → UI atualiza progresso
-     → GET /api/jobs/:id/download → .srt traduzido
+     → SSE /api/jobs/:id/events → UI updates progress
+     → GET /api/jobs/:id/download → translated .srt
 ```
 
 ```mermaid
@@ -38,57 +38,57 @@ flowchart LR
   BE --> LLM
 ```
 
-## Estrutura de pastas
+## Folder structure
 
 ```
 subtranslate-ai/
-├── shared/src/types.ts       # Tipos compartilhados (Cue, Settings, Job, etc.)
+├── shared/src/types.ts       # Shared types (Cue, Settings, Job, etc.)
 ├── backend/src/
-│   ├── server.ts             # Entry point Fastify
-│   ├── routes/index.ts       # Todas as rotas REST + SSE
-│   ├── jobs/jobStore.ts      # Jobs em memória (TTL 1h); API key separada
+│   ├── server.ts             # Fastify entry point
+│   ├── routes/index.ts       # All REST + SSE routes
+│   ├── jobs/jobStore.ts      # In-memory jobs (1h TTL); API key stored separately
 │   ├── srtParser.ts          # parseSrt / serializeSrt
-│   ├── llmProviders/         # Abstração e implementações de LLM
-│   └── translation/          # Motor de tradução (lógica crítica)
+│   ├── llmProviders/         # LLM abstraction and implementations
+│   └── translation/          # Translation engine (critical logic)
 ├── frontend/src/
-│   ├── App.tsx               # Estado global da UI
-│   ├── api/client.ts         # Cliente HTTP + EventSource
-│   ├── components/           # UI modular
-│   └── lib/                  # Cookies, idiomas, detecção, formatação
-├── README.md                 # Documentação do usuário
-└── AGENTS.md                 # Este arquivo
+│   ├── App.tsx               # Global UI state
+│   ├── api/client.ts         # HTTP client + EventSource
+│   ├── components/           # Modular UI
+│   └── lib/                  # Cookies, languages, detection, formatting
+├── README.md                 # User documentation
+└── AGENTS.md                 # This file
 ```
 
-## Módulos críticos (não quebrar sem entender)
+## Critical modules (do not break without understanding)
 
-### 1. Parser SRT — `backend/src/srtParser.ts`
+### 1. SRT parser — `backend/src/srtParser.ts`
 
-- `parseSrt(content)` → `SubtitleCue[]` com `id` 0-based, `status: "pending"`
-- `serializeSrt(cues)` → preserva índice e timestamps; só substitui texto
-- Validação estrita de formato; erros via `SrtParseError`
+- `parseSrt(content)` → `SubtitleCue[]` with 0-based `id`, `status: "pending"`
+- `serializeSrt(cues)` → preserves index and timestamps; only replaces text
+- Strict format validation; errors via `SrtParseError`
 
-### 2. Motor de tradução — `backend/src/translation/`
+### 2. Translation engine — `backend/src/translation/`
 
-| Arquivo | Responsabilidade |
-|---------|------------------|
-| `buildContextWindow.ts` | Janela deslizante: N cues antes/depois do atual |
-| `buildTranslationPrompt.ts` | System/user prompt JSON; instruções de naturalidade |
-| `validateTranslation.ts` | Anti-vazamento de contexto + `parseTranslationResponse` |
-| `translateCue.ts` | Uma cue: LLM → parse JSON → validar → retries |
-| `translateSrtDocument.ts` | Orquestra todas as cues em **lotes paralelos** (`parallelism`) |
+| File | Responsibility |
+|------|----------------|
+| `buildContextWindow.ts` | Sliding window: N cues before/after the current one |
+| `buildTranslationPrompt.ts` | System/user JSON prompt; natural-language instructions |
+| `validateTranslation.ts` | Context-leakage checks + `parseTranslationResponse` |
+| `translateCue.ts` | Single cue: LLM → parse JSON → validate → retries |
+| `translateSrtDocument.ts` | Orchestrates all cues in **parallel batches** (`parallelism`) |
 
-**Regras de negócio importantes:**
-- Uma chamada LLM por cue (nunca o arquivo inteiro)
-- Cues anteriores no contexto incluem `translatedText` quando já traduzidas
-- Cues posteriores só têm texto original
-- Retry com prompt mais restritivo se `validateTranslation` falhar
-- Após esgotar retries → status `needs_review`, continua o job
-- Cache em memória por hash (texto + settings) dentro do mesmo job
-- `parallelism`: processa em lotes; cada lote espera o anterior para contexto consistente
+**Important business rules:**
+- One LLM call per cue (never the whole file)
+- Previous cues in context include `translatedText` when already translated
+- Next cues only include original text
+- Retry with a stricter prompt if `validateTranslation` fails
+- After retries are exhausted → `needs_review` status, job continues
+- In-memory cache by hash (text + settings) within the same job
+- `parallelism`: processes in batches; each batch waits for the previous one for consistent context
 
-### 3. LLM Providers — `backend/src/llmProviders/`
+### 3. LLM providers — `backend/src/llmProviders/`
 
-Interface em `base.ts`:
+Interface in `base.ts`:
 ```typescript
 interface LlmProvider {
   chatCompletion(params): Promise<{ content, usage? }>;
@@ -96,145 +96,145 @@ interface LlmProvider {
 ```
 
 - `createProvider(providerId, apiKey, customBaseUrl?)` — factory
-- `withRetry` — backoff exponencial para 429/5xx
-- `listModels.ts` — lista modelos via API de cada provedor
+- `withRetry` — exponential backoff for 429/5xx
+- `listModels.ts` — lists models via each provider's API
 - OpenAI-compatible: OpenAI, DeepSeek, OpenRouter, Custom
-- Nativos: Anthropic, Gemini
-- **Nunca logar API key** — usar `redactSecrets()`
+- Native: Anthropic, Gemini
+- **Never log API keys** — use `redactSecrets()`
 
 ### 4. Job store — `backend/src/jobs/jobStore.ts`
 
-- Estado em memória (não persiste entre restarts)
-- API key em `Map` separado, apagada ao fim do job
-- SSE via subscribers por jobId
+- In-memory state (does not survive restarts)
+- API key in a separate `Map`, deleted when the job ends
+- SSE via subscribers per jobId
 - Pause/resume/cancel via flags + promises
 
-## API REST
+## REST API
 
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| POST | `/api/parse` | Upload multipart `.srt` |
-| POST | `/api/models` | Lista modelos (requer apiKey no body) |
-| POST | `/api/jobs` | Inicia tradução async |
-| GET | `/api/jobs/:id` | Estado do job (sem apiKey) |
-| GET | `/api/jobs/:id/events` | SSE de eventos |
-| POST | `/api/jobs/:id/cancel` | Cancela |
-| POST | `/api/jobs/:id/pause` | Pausa após cue atual |
-| POST | `/api/jobs/:id/resume` | Retoma |
-| GET | `/api/jobs/:id/download` | Arquivo `.srt` traduzido |
-| GET | `/api/jobs/:id/report` | JSON de cues failed/needs_review |
+| Method | Route | Description |
+|--------|-------|-------------|
+| POST | `/api/parse` | Multipart `.srt` upload |
+| POST | `/api/models` | List models (requires apiKey in body) |
+| POST | `/api/jobs` | Start async translation |
+| GET | `/api/jobs/:id` | Job state (no apiKey) |
+| GET | `/api/jobs/:id/events` | SSE events |
+| POST | `/api/jobs/:id/cancel` | Cancel |
+| POST | `/api/jobs/:id/pause` | Pause after current cue |
+| POST | `/api/jobs/:id/resume` | Resume |
+| GET | `/api/jobs/:id/download` | Translated `.srt` file |
+| GET | `/api/jobs/:id/report` | JSON of failed/needs_review cues |
 
-## Frontend — componentes principais
+## Frontend — main components
 
-| Componente | Função |
-|------------|--------|
-| `SrtUpload` | Upload; exibe nome do arquivo e contagem de cues |
+| Component | Purpose |
+|-----------|---------|
+| `SrtUpload` | Upload; shows filename and cue count |
 | `LanguageDirectionPanel` | Source/target + swap + auto-detect |
-| `LanguageSearchSelect` | Combobox com busca (180+ idiomas) |
-| `LlmConfigForm` | Provider, API key, modelo, parâmetros |
+| `LanguageSearchSelect` | Searchable combobox (180+ languages) |
+| `LlmConfigForm` | Provider, API key, model, parameters |
 | `TranslationControls` | Translate / Pause / Resume / Cancel |
-| `ProgressBar` | Barra + tempo total ao finalizar |
-| `TranslationDashboard` | Gráficos Recharts + estimativa ETA |
-| `CuePreview` | Tabela original vs traduzido |
-| `DownloadBar` | Download + banner de conclusão com tempo |
+| `ProgressBar` | Progress bar + total time on completion |
+| `TranslationDashboard` | Recharts graphs + ETA estimate |
+| `CuePreview` | Side-by-side original vs translated table |
+| `DownloadBar` | Download + completion banner with elapsed time |
 
-### Libs frontend (`frontend/src/lib/`)
+### Frontend libs (`frontend/src/lib/`)
 
-| Arquivo | Função |
-|---------|--------|
-| `llmConfigCookies.ts` | Persiste config + API key em cookie (1 ano); migra nomes legados |
-| `languages.ts` | Lista via `iso-639-1` + variantes regionais |
-| `detectLanguage.ts` | Auto-detect com `franc-min` + `langs` |
-| `formatDuration.ts` | Formata segundos → `Xm Ys` |
+| File | Purpose |
+|------|---------|
+| `llmConfigCookies.ts` | Persists config + API key in cookie (1 year); migrates legacy names |
+| `languages.ts` | List via `iso-639-1` + regional variants |
+| `detectLanguage.ts` | Auto-detect with `franc-min` + `langs` |
+| `formatDuration.ts` | Formats seconds → `Xm Ys` |
 
-### Estado em `App.tsx`
+### State in `App.tsx`
 
-- `settings` + `apiKey` salvos em cookie automaticamente (debounce 400ms)
-- `progressHistory` para gráficos e ETA
-- `elapsedSeconds` capturado ao status terminal (completed/cancelled/failed)
-- Auto-detect de source language no upload do SRT
+- `settings` + `apiKey` auto-saved to cookie (400ms debounce)
+- `progressHistory` for charts and ETA
+- `elapsedSeconds` captured on terminal status (completed/cancelled/failed)
+- Source language auto-detect on SRT upload
 
-## Segurança
+## Security
 
-- API key enviada uma vez no `POST /api/jobs`; fica só em memória no backend
-- Nunca retornar apiKey em SSE, GET job ou logs
-- Cookie do frontend contém apiKey — documentar risco em produção
-- CORS limitado a `localhost:5173` no dev
+- API key sent once in `POST /api/jobs`; kept in backend memory only
+- Never return apiKey in SSE, GET job, or logs
+- Frontend cookie contains apiKey — document risk for production
+- CORS limited to `localhost:5173` in dev
 
-## Testes
+## Tests
 
-Backend usa **Vitest** (`backend/src/__tests__/`):
+Backend uses **Vitest** (`backend/src/__tests__/`):
 - `srtParser.test.ts`
 - `buildContextWindow.test.ts`
 - `validateTranslation.test.ts`
-- `listModels.test.ts` (skipped sem `DEEPSEEK_API_KEY`)
+- `listModels.test.ts` (skipped without `DEEPSEEK_API_KEY`)
 
-Rodar: `npm test` na raiz.
+Run from root: `npm test`.
 
-## Convenções de código
+## Code conventions
 
-- TypeScript strict em todos os pacotes
-- Imports ESM com sufixo `.js` no backend
-- Tipos compartilhados sempre em `shared/` — não duplicar
-- UI em **inglês**; comentários críticos no backend em inglês
-- Mudanças mínimas e focadas; não refatorar sem necessidade
-- Não simular LLM no fluxo principal — usar abstração real
+- TypeScript strict in all packages
+- ESM imports with `.js` suffix in backend
+- Shared types always in `shared/` — do not duplicate
+- UI in **English**; critical backend comments in English
+- Minimal, focused changes; do not refactor unnecessarily
+- Do not mock LLM in the main flow — use real provider abstractions
 
-## Pontos de extensão comuns
+## Common extension points
 
-### Novo provedor LLM
-1. Criar `backend/src/llmProviders/novo.ts` implementando `LlmProvider`
-2. Registrar em `llmProviders/index.ts` (`createProvider`)
-3. Adicionar em `LLM_PROVIDERS` em `shared/src/types.ts`
-4. Se OpenAI-compatible, reutilizar `createOpenAiProvider` com baseURL
-5. Adicionar listagem em `listModels.ts` se aplicável
+### New LLM provider
+1. Create `backend/src/llmProviders/newprovider.ts` implementing `LlmProvider`
+2. Register in `llmProviders/index.ts` (`createProvider`)
+3. Add to `LLM_PROVIDERS` in `shared/src/types.ts`
+4. If OpenAI-compatible, reuse `createOpenAiProvider` with a baseURL
+5. Add listing in `listModels.ts` if applicable
 
-### Novo campo em TranslationSettings
-1. `shared/src/types.ts` + default em `DEFAULT_TRANSLATION_SETTINGS`
+### New TranslationSettings field
+1. `shared/src/types.ts` + default in `DEFAULT_TRANSLATION_SETTINGS`
 2. `LlmConfigForm.tsx` (UI)
-3. `buildTranslationPrompt.ts` se afetar o prompt
-4. Cookie já serializa o objeto inteiro — funciona automaticamente
+3. `buildTranslationPrompt.ts` if it affects the prompt
+4. Cookie already serializes the full object — works automatically
 
-### Novo status de cue
-1. `CueStatus` em `shared/src/types.ts`
+### New cue status
+1. `CueStatus` in `shared/src/types.ts`
 2. `translateCue.ts` / `translateSrtDocument.ts`
 3. `jobStore.ts` (emit events)
 4. `CuePreview.tsx` + CSS badges
-5. `TranslationDashboard.tsx` (contagens)
+5. `TranslationDashboard.tsx` (counts)
 
-## Armadilhas conhecidas
+## Known pitfalls
 
-1. **Porta 3001 ocupada:** `npm run dev` mata processo antigo; se rodar backend manualmente sem a rota nova, frontend recebe 404 (ex.: `/api/models`).
+1. **Port 3001 in use:** `npm run dev` kills the old process; running an outdated backend manually causes 404s (e.g. `/api/models`).
 
-2. **SSE:** conexão fica aberta; `routes/index.ts` resolve promise no `close` do client.
+2. **SSE:** connection stays open; `routes/index.ts` resolves the promise on client `close`.
 
-3. **Cookies ~4KB:** glossários longos são truncados em `llmConfigCookies.ts`.
+3. **Cookies ~4KB:** long glossaries are truncated in `llmConfigCookies.ts`.
 
-4. **Paralelismo vs contexto:** cues no mesmo lote não veem traduções umas das outras; lotes sequenciais sim.
+4. **Parallelism vs context:** cues in the same batch do not see each other's translations; sequential batches do.
 
-5. **franc-min:** precisa de texto mínimo (~20 chars); retorna `und` se incerto.
+5. **franc-min:** needs minimum text (~20 chars); returns `und` when uncertain.
 
-6. **Workspace folder:** path pode ser `srt-forge` mas packages são `@subtranslate-ai/*`.
+6. **Workspace folder:** path may be `srt-forge` but packages are `@subtranslate-ai/*`.
 
-## Checklist antes de PR
+## Pre-PR checklist
 
-- [ ] `npm run build` passa (shared → backend → frontend)
-- [ ] `npm test` passa
-- [ ] API key nunca aparece em logs ou respostas públicas
-- [ ] Timestamps/índices SRT preservados após mudanças no parser/serializer
-- [ ] Tradução continua cue-by-cue (não batch do arquivo inteiro)
+- [ ] `npm run build` passes (shared → backend → frontend)
+- [ ] `npm test` passes
+- [ ] API key never appears in logs or public responses
+- [ ] SRT timestamps/indices preserved after parser/serializer changes
+- [ ] Translation remains cue-by-cue (not whole-file batch)
 
-## Referência rápida de status por cue
+## Quick reference: cue statuses
 
-| Status | Significado |
-|--------|-------------|
-| `pending` | Aguardando |
-| `translating` | Chamada LLM em andamento |
-| `translated` | Sucesso |
-| `retrying` | Retry após falha de validação ou rede |
-| `failed` | Erro definitivo |
-| `needs_review` | Tradução suspeita; job continua |
+| Status | Meaning |
+|--------|---------|
+| `pending` | Waiting |
+| `translating` | LLM call in progress |
+| `translated` | Success |
+| `retrying` | Retry after validation or network failure |
+| `failed` | Definitive error |
+| `needs_review` | Suspicious translation; job continues |
 
 ---
 
-Última atualização: reflete o estado do projeto com SubTranslate AI, paralelismo, auto-detect, cookies, dashboard e listagem dinâmica de modelos.
+Last updated: reflects SubTranslate AI with parallelism, auto-detect, cookies, dashboard, and dynamic model listing.
