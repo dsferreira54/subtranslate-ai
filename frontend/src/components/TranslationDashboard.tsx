@@ -79,34 +79,38 @@ const ProgressBreakdownChart = memo(function ProgressBreakdownChart({
   return (
     <div className="chart-card chart-progress">
       <h3>Progress Breakdown</h3>
-      <ResponsiveContainer width="100%" height={330}>
-        <PieChart margin={{ top: 24, right: 16, bottom: 16, left: 16 }}>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="48%"
-            innerRadius={55}
-            outerRadius={88}
-            paddingAngle={2}
-            dataKey="value"
-            label={renderPieLabel}
-            labelLine={PIE_LABEL_LINE_STYLE}
-            isAnimationActive={false}
-          >
-            {data.map((entry) => (
-              <Cell key={entry.name} fill={entry.color} stroke="#1a1f2e" strokeWidth={2} />
-            ))}
-          </Pie>
-          <Tooltip
-            contentStyle={CHART_TOOLTIP_STYLE}
-            formatter={(value, name) => {
-              const n = Number(value ?? 0);
-              return [`${n} cues (${total > 0 ? Math.round((n / total) * 100) : 0}%)`, String(name ?? "")];
-            }}
-          />
-          <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
-        </PieChart>
-      </ResponsiveContainer>
+      <div className="chart-progress-body">
+        <ResponsiveContainer width="100%" height={330}>
+          <PieChart margin={{ top: 32, right: 24, bottom: 24, left: 24 }}>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="46%"
+              innerRadius={55}
+              outerRadius={80}
+              paddingAngle={2}
+              dataKey="value"
+              label={renderPieLabel}
+              labelLine={PIE_LABEL_LINE_STYLE}
+              isAnimationActive={false}
+            >
+              {data.map((entry) => (
+                <Cell key={entry.name} fill={entry.color} stroke="#1a1f2e" strokeWidth={2} />
+              ))}
+            </Pie>
+            <Tooltip
+              allowEscapeViewBox={{ x: false, y: false }}
+              reverseDirection={{ x: true, y: true }}
+              contentStyle={CHART_TOOLTIP_STYLE}
+              formatter={(value, name) => {
+                const n = Number(value ?? 0);
+                return [`${n} cues (${total > 0 ? Math.round((n / total) * 100) : 0}%)`, String(name ?? "")];
+              }}
+            />
+            <Legend wrapperStyle={LEGEND_WRAPPER_STYLE} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 });

@@ -220,8 +220,16 @@ textarea:focus {
   border-color: transparent;
 }
 
-.srt-upload h2 {
+.srt-upload-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   margin-bottom: 0.75rem;
+}
+
+.srt-upload-header h2 {
+  margin: 0;
 }
 
 .dropzone {
@@ -986,9 +994,8 @@ textarea:focus {
   grid-column: 1 / -1;
 }
 
-.chart-card.chart-progress .recharts-wrapper,
-.chart-card.chart-progress .recharts-surface {
-  overflow: visible;
+.chart-card.chart-progress .chart-progress-body {
+  overflow: hidden;
 }
 
 .chart-center-label {

@@ -164,6 +164,25 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [jobId, filename, progressHistory, elapsedSeconds, job?.status]);
 
+  const handleClear = useCallback(() => {
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
+    clearActiveJobSession();
+
+    setCues([]);
+    setFilename("");
+    setJob(null);
+    setJobId(null);
+    setError(null);
+    setResumeNotice(null);
+    setProgressHistory([]);
+    setElapsedSeconds(null);
+    jobStartRef.current = null;
+    elapsedCapturedRef.current = false;
+    notificationSentRef.current = false;
+    setSourceDetectNotice(null);
+  }, []);
+
   const handleParsed = useCallback((parsed: SubtitleCue[], name: string) => {
     unsubscribeRef.current?.();
     unsubscribeRef.current = null;
@@ -275,6 +294,7 @@ export default function App() {
         />
         <SrtUpload
           onParsed={handleParsed}
+          onClear={handleClear}
           disabled={isRunning}
           filename={filename || undefined}
           cueCount={cues.length}

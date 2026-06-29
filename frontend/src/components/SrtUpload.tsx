@@ -4,12 +4,13 @@ import type { SubtitleCue } from "@subtranslate-ai/shared";
 
 interface SrtUploadProps {
   onParsed: (cues: SubtitleCue[], filename: string) => void;
+  onClear: () => void;
   disabled?: boolean;
   filename?: string;
   cueCount?: number;
 }
 
-export function SrtUpload({ onParsed, disabled, filename, cueCount = 0 }: SrtUploadProps) {
+export function SrtUpload({ onParsed, onClear, disabled, filename, cueCount = 0 }: SrtUploadProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -46,9 +47,28 @@ export function SrtUpload({ onParsed, disabled, filename, cueCount = 0 }: SrtUpl
 
   const hasFile = !!filename;
 
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setError(null);
+    if (inputRef.current) inputRef.current.value = "";
+    onClear();
+  };
+
   return (
     <section className="card srt-upload">
-      <h2>Upload SRT File</h2>
+      <div className="srt-upload-header">
+        <h2>Upload SRT File</h2>
+        {hasFile && (
+          <button
+            type="button"
+            className="btn secondary btn-sm"
+            disabled={disabled}
+            onClick={handleClear}
+          >
+            Clear
+          </button>
+        )}
+      </div>
       <div
         className={`dropzone${hasFile ? " has-file" : ""}${dragOver ? " drag-over" : ""}${disabled ? " disabled" : ""}`}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
