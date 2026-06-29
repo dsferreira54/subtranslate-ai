@@ -251,12 +251,16 @@ export function TranslationDashboard({ cues, job, progressHistory, elapsedSecond
             <span className="stat-label">Translated</span>
           </div>
           <div className="stat-card">
-            <span className="stat-value">{completedPercent}%</span>
-            <span className="stat-label">Processed</span>
-          </div>
-          <div className="stat-card">
             <span className="stat-value">{statusCounts.translated}/{total}</span>
             <span className="stat-label">Cues done</span>
+          </div>
+          <div className={`stat-card${timeEstimate && job?.status === "running" ? " eta" : ""}`}>
+            <span className="stat-value">
+              {timeEstimate && job?.status === "running"
+                ? formatDuration(timeEstimate.etaSec)
+                : "—"}
+            </span>
+            <span className="stat-label">Est. remaining</span>
           </div>
           <div className="stat-card highlight">
             <span className="stat-value">{totalTimeDisplay}</span>
