@@ -1,6 +1,6 @@
 # SubTranslate AI — Maintenance context for agents
 
-This document guides agents and developers maintaining **SubTranslate AI** (npm name: `subtranslate-ai`). The on-disk folder may still be named `srt-forge` — that is legacy from the rename.
+This document guides agents and developers maintaining **SubTranslate AI** (npm name: `subtranslate-ai`).
 
 ## What this project is
 
