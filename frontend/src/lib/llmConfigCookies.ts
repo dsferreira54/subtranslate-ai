@@ -4,9 +4,7 @@ import {
 } from "@subtranslate-ai/shared";
 
 const COOKIE_NAME = "subtranslate-ai-llm-config";
-const LEGACY_COOKIE_NAME = "srt-forge-llm-config";
 const COOKIE_MAX_AGE_SEC = 365 * 24 * 60 * 60; // 1 year
-const LEGACY_SESSION_KEY = "srt-forge-api-key";
 
 export interface StoredLlmConfig {
   settings: TranslationSettings;
@@ -42,35 +40,9 @@ export function getLlmConfigFromCookie(): StoredLlmConfig | null {
   if (typeof document === "undefined") return null;
 
   const current = readCookie(COOKIE_NAME);
-  if (current) {
-    const parsed = parseCookieValue(current);
-    if (parsed) return parsed;
-  }
+  if (!current) return null;
 
-  const legacy = readCookie(LEGACY_COOKIE_NAME);
-  if (legacy) {
-    const parsed = parseCookieValue(legacy);
-    if (parsed) {
-      saveLlmConfigToCookie(parsed.settings, parsed.apiKey);
-      return parsed;
-    }
-  }
-
-  return migrateLegacySessionStorage();
-}
-
-function migrateLegacySessionStorage(): StoredLlmConfig | null {
-  try {
-    const legacyKey = sessionStorage.getItem(LEGACY_SESSION_KEY);
-    if (!legacyKey) return null;
-    sessionStorage.removeItem(LEGACY_SESSION_KEY);
-    return {
-      settings: DEFAULT_TRANSLATION_SETTINGS,
-      apiKey: legacyKey,
-    };
-  } catch {
-    return null;
-  }
+  return parseCookieValue(current);
 }
 
 export function saveLlmConfigToCookie(settings: TranslationSettings, apiKey: string): void {
@@ -104,5 +76,4 @@ function buildCookie(encodedValue: string): string {
 export function clearLlmConfigCookie(): void {
   if (typeof document === "undefined") return;
   document.cookie = `${COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax`;
-  document.cookie = `${LEGACY_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax`;
 }

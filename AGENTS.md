@@ -142,7 +142,7 @@ interface LlmProvider {
 
 | File | Purpose |
 |------|---------|
-| `llmConfigCookies.ts` | Persists config + API key in cookie (1 year); migrates legacy names |
+| `llmConfigCookies.ts` | Persists config + API key in cookie (1 year) |
 | `languages.ts` | List via `iso-639-1` + regional variants |
 | `detectLanguage.ts` | Auto-detect with `franc-min` + `langs` |
 | `formatDuration.ts` | Formats seconds → `Xm Ys` |
@@ -214,7 +214,7 @@ Run from root: `npm test`.
 
 5. **franc-min:** needs minimum text (~20 chars); returns `und` when uncertain.
 
-6. **Workspace folder:** path may be `srt-forge` but packages are `@subtranslate-ai/*`.
+6. **Workspace folder:** `subtranslate-ai` (npm packages: `@subtranslate-ai/*`).
 
 ## Pre-PR checklist
 
