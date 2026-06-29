@@ -155,6 +155,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const job = jobStore.getJob(request.params.id);
     if (!job) return reply.status(404).send({ error: "Job not found." });
 
+    // Safe while the job is still running: serializeSrt uses translated text when available,
+    // otherwise falls back to the original cue text.
     const content = serializeSrt(job.cues);
     const filename = job.filename?.replace(/\.srt$/i, "") ?? "translated";
     reply.header("Content-Type", "text/plain; charset=utf-8");

@@ -12,11 +12,9 @@ import {
 import { SrtUpload } from "./components/SrtUpload";
 import { LlmConfigForm } from "./components/LlmConfigForm";
 import { LanguageDirectionPanel } from "./components/LanguageDirectionPanel";
-import { TranslationControls } from "./components/TranslationControls";
-import { ProgressBar } from "./components/ProgressBar";
+import { TranslationActionBar } from "./components/TranslationActionBar";
 import { LogPanel } from "./components/LogPanel";
 import { CuePreview } from "./components/CuePreview";
-import { DownloadBar } from "./components/DownloadBar";
 import { TranslationDashboard, type ProgressSnapshot } from "./components/TranslationDashboard";
 import { getLlmConfigFromCookie, saveLlmConfigToCookie } from "./lib/llmConfigCookies";
 import { detectLanguageFromCues } from "./lib/detectLanguage";
@@ -143,9 +141,7 @@ export default function App() {
   };
 
   const isRunning = job?.status === "running";
-  const isPaused = job?.status === "paused";
   const canTranslate = cues.length > 0 && apiKey.trim().length > 0 && settings.model.trim().length > 0;
-  const canDownload = job?.status === "completed" || job?.status === "cancelled";
   const hasReviewItems = (job?.progress.needsReview ?? 0) > 0 || (job?.progress.failed ?? 0) > 0;
   const displayCues = job?.cues ?? cues;
   const displayLogs = job?.logs ?? [];
@@ -160,6 +156,14 @@ export default function App() {
       {error && <div className="banner error">{error}</div>}
 
       <main>
+        <LlmConfigForm
+          settings={settings}
+          onChange={setSettings}
+          apiKey={apiKey}
+          onApiKeyChange={setApiKey}
+          configLoaded={configLoaded}
+          disabled={isRunning}
+        />
         <SrtUpload
           onParsed={handleParsed}
           disabled={isRunning}
@@ -173,40 +177,22 @@ export default function App() {
           detectNotice={sourceDetectNotice}
           onDetectNoticeClear={() => setSourceDetectNotice(null)}
           disabled={isRunning}
-          onSourceChange={(code) => setSettings({ ...settings, sourceLanguage: code })}
-          onTargetChange={(code) => setSettings({ ...settings, targetLanguage: code })}
+          onSourceChange={(code) => setSettings((prev) => ({ ...prev, sourceLanguage: code }))}
+          onTargetChange={(code) => setSettings((prev) => ({ ...prev, targetLanguage: code }))}
         />
-        <LlmConfigForm
-          settings={settings}
-          onChange={setSettings}
-          apiKey={apiKey}
-          onApiKeyChange={setApiKey}
-          disabled={isRunning}
-        />
-        <TranslationControls
+        <TranslationActionBar
+          cueCount={cues.length}
+          jobId={jobId}
+          job={job}
+          canTranslate={canTranslate}
+          hasReviewItems={hasReviewItems}
+          elapsedSeconds={elapsedSeconds}
           onTranslate={handleTranslate}
           onCancel={() => jobId && cancelJob(jobId)}
           onPause={() => jobId && pauseJob(jobId)}
           onResume={() => jobId && resumeJob(jobId)}
-          canTranslate={canTranslate}
-          isRunning={isRunning || isPaused}
-          isPaused={isPaused}
-          hasJob={!!jobId}
+          onExportReport={handleExportReport}
         />
-
-        {job && (
-          <ProgressBar
-            total={job.progress.total}
-            translated={job.progress.translated}
-            failed={job.progress.failed}
-            needsReview={job.progress.needsReview}
-            estimatedCostUsd={job.tokenUsage.estimatedCostUsd}
-            promptTokens={job.tokenUsage.promptTokens}
-            completionTokens={job.tokenUsage.completionTokens}
-            elapsedSeconds={elapsedSeconds}
-            jobStatus={job.status}
-          />
-        )}
 
         {displayCues.length > 0 && (
           <TranslationDashboard
@@ -216,15 +202,6 @@ export default function App() {
             elapsedSeconds={elapsedSeconds}
           />
         )}
-
-        <DownloadBar
-          jobId={jobId}
-          canDownload={canDownload}
-          onExportReport={handleExportReport}
-          hasReviewItems={hasReviewItems}
-          elapsedSeconds={elapsedSeconds}
-          jobStatus={job?.status}
-        />
 
         <LogPanel logs={displayLogs} />
         <CuePreview cues={displayCues} />

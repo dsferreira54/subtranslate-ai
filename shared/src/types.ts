@@ -1,3 +1,5 @@
+import { DEFAULT_SYSTEM_PROMPT_TEMPLATE } from "./defaultSystemPrompt.js";
+
 export type CueStatus =
   | "pending"
   | "translating"
@@ -36,6 +38,7 @@ export interface TranslationSettings {
   parallelism: number;
   glossary?: string;
   styleInstructions?: string;
+  systemPrompt?: string;
   customBaseUrl?: string;
 }
 
@@ -48,6 +51,7 @@ export const DEFAULT_TRANSLATION_SETTINGS: TranslationSettings = {
   temperature: 0.2,
   maxRetries: 3,
   parallelism: 1,
+  systemPrompt: DEFAULT_SYSTEM_PROMPT_TEMPLATE,
 };
 
 export type JobStatus =

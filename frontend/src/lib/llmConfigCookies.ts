@@ -58,6 +58,7 @@ export function saveLlmConfigToCookie(settings: TranslationSettings, apiKey: str
         ...settings,
         glossary: settings.glossary?.slice(0, 500),
         styleInstructions: settings.styleInstructions?.slice(0, 500),
+        systemPrompt: settings.systemPrompt?.slice(0, 1200),
       },
       apiKey,
     };

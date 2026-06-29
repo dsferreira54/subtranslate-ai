@@ -1,4 +1,5 @@
 import type { TranslationSettings } from "@subtranslate-ai/shared";
+import { resolveSystemPrompt } from "@subtranslate-ai/shared";
 import type { ChatMessage } from "../llmProviders/base.js";
 import type { ContextWindow } from "./buildContextWindow.js";
 
@@ -31,23 +32,9 @@ function formatNextBlock(block: { index: string; originalText: string }) {
 
 export function buildTranslationPrompt(options: PromptOptions): ChatMessage[] {
   const { context, settings, leakageRetry, previousAttempt, validationErrors } = options;
-  const { sourceLanguage, targetLanguage, glossary, styleInstructions } = settings;
+  const { sourceLanguage, targetLanguage, glossary, styleInstructions, systemPrompt } = settings;
 
-  const systemPrompt = `You are a professional SRT subtitle translator.
-Translate ONLY the block marked as CURRENT from ${sourceLanguage} to ${targetLanguage}.
-Use previous and next blocks ONLY as semantic context — do NOT translate them.
-Do NOT include information that appears only in context blocks.
-Do NOT explain the translation.
-Do NOT return markdown.
-Do NOT alter timestamps or indices.
-Do NOT merge dialogue from different blocks.
-Do NOT add content that does not exist in the CURRENT block.
-Preserve meaning, tone, intent, and register of the speech.
-Prioritize natural, idiomatic language over literal translation. Avoid overly formal, archaic, uncommon, or dictionary-like vocabulary when a more natural alternative exists. Write as a native speaker would naturally speak in the target language, especially for dialogue and subtitles. When multiple translations are correct, always choose the most fluent, conversational, and widely used expression while preserving the original meaning and tone.
-When ambiguous, use context to choose the best translation, but the final response must contain ONLY the CURRENT block translation.
-
-Respond in strict JSON format:
-{"translatedText": "translated text here"}`;
+  const systemPromptContent = resolveSystemPrompt(systemPrompt, sourceLanguage, targetLanguage);
 
   const contextPayload = {
     previousBlocks: context.previousContext.map(formatPreviousBlock),
@@ -84,7 +71,7 @@ ${JSON.stringify(contextPayload, null, 2)}`;
   }
 
   return [
-    { role: "system", content: systemPrompt },
+    { role: "system", content: systemPromptContent },
     { role: "user", content: userContent },
   ];
 }
